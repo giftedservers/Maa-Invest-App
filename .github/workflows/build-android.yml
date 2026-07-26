@@ -36,7 +36,17 @@ jobs:
           java-version: '17'
 
       - name: Generate native Android project
-        run: npx expo prebuild --platform android --non-interactive
+        run: npx expo prebuild --platform android --clean --non-interactive
+
+      # expo prebuild doesn't reliably pin a modern enough Android Gradle
+      # Plugin / Gradle pairing on a plain CI runner, which causes a
+      # "Could not get unknown property 'release'" failure in
+      # expo-modules-core. Force known-good versions here instead of
+      # trusting whatever prebuild picked.
+      - name: Pin Android Gradle Plugin and Gradle versions
+        run: |
+          sed -i "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.1.4/" android/build.gradle
+          sed -i "s#distributionUrl=.*#distributionUrl=https\\\\://services.gradle.org/distributions/gradle-8.6-all.zip#" android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Build APK
         working-directory: android
