@@ -1,13 +1,5 @@
 name: Build Android app
 
-# Runs automatically on every push to main, and can also be triggered
-# manually from the Actions tab (Run workflow button).
-#
-# This builds entirely on GitHub's own servers — no Expo account, no
-# token, nothing to sign up for. GitHub's ubuntu runners already have the
-# Android SDK and Java installed, so this just turns the React Native
-# project into a plain Android project (expo prebuild) and builds it
-# with Gradle, same as any native Android app.
 on:
   push:
     branches: [main]
@@ -29,6 +21,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Align Expo package versions
+        run: npx expo install --fix
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -38,15 +33,27 @@ jobs:
       - name: Generate native Android project
         run: npx expo prebuild --platform android --clean --non-interactive
 
-      # expo prebuild doesn't reliably pin a modern enough Android Gradle
-      # Plugin / Gradle pairing on a plain CI runner, which causes a
-      # "Could not get unknown property 'release'" failure in
-      # expo-modules-core. Force known-good versions here instead of
-      # trusting whatever prebuild picked.
-      - name: Pin Android Gradle Plugin and Gradle versions
+      # Android Gradle Plugin 8.x stopped auto-creating the "release"
+      # publishing component that some Expo native modules still assume
+      # exists, causing "Could not get unknown property 'release'".
+      # Explicitly declare it for every Android library module instead
+      # of guessing at AGP/Gradle version numbers.
+      - name: Patch missing publishing component
         run: |
-          sed -i "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.1.4/" android/build.gradle
-          sed -i "s#distributionUrl=.*#distributionUrl=https\\\\://services.gradle.org/distributions/gradle-8.6-all.zip#" android/gradle/wrapper/gradle-wrapper.properties
+          cat >> android/build.gradle << 'PATCH'
+
+          allprojects {
+              afterEvaluate { project ->
+                  if (project.plugins.hasPlugin('com.android.library')) {
+                      project.android {
+                          publishing {
+                              singleVariant('release')
+                          }
+                      }
+                  }
+              }
+          }
+          PATCH
 
       - name: Build APK
         working-directory: android
